@@ -48,9 +48,29 @@ defmodule LiveData do
     quote do
       @endpoint Keyword.get(unquote(opts), :endpoint)
       @types_output_path Keyword.get(unquote(opts), :types_output_path, false)
+      @state_output_path Keyword.get(unquote(opts), :state_output_path, false)
+      @default_state Keyword.get(unquote(opts), :default_state, %{})
+      @allowed_keys Enum.map(
+                      Map.keys(@default_state),
+                      &to_string(&1)
+                    )
+
       defmodule Channel do
         use Phoenix.Channel
         require Logger
+        @default_state Keyword.get(unquote(opts), :default_state, %{})
+        @allowed_keys Enum.map(
+                        Map.keys(@default_state),
+                        &to_string(&1)
+                      )
+
+        def join(name, %{"prevState" => prev_state} = params, socket) do
+          prev_s = Morphix.atomorphify!(prev_state, @allowed_keys)
+          # need to expose this somehow to allow for authentication/authorization logic
+          send(self(), {:after_join, name, %{params | "prevState" => prev_s}})
+
+          {:ok, socket}
+        end
 
         def join(name, params, socket) do
           # need to expose this somehow to allow for authentication/authorization logic
@@ -58,6 +78,13 @@ defmodule LiveData do
 
           {:ok, socket}
         end
+
+        @parent __MODULE__
+                |> to_string
+                |> String.split(".")
+                |> Enum.drop(-1)
+                |> Enum.join(".")
+                |> String.to_atom()
 
         def handle_info({:after_join, name, params}, socket) do
           # actually use the Parent module to start/lookup a supervisor for this channel "App:*"
@@ -95,7 +122,7 @@ defmodule LiveData do
         def handle_in(method, params, socket) do
           GenServer.call(
             socket.assigns.pid,
-            {method, params}
+            {String.to_existing_atom(method), params}
           )
 
           {:noreply, socket}
@@ -105,6 +132,11 @@ defmodule LiveData do
       # this needs to be here?
       use GenServer
       require Logger
+      @default_state Keyword.get(unquote(opts), :default_state, %{})
+
+      # def start_link(default_state) when is_list(default) do
+      #   GenServer.start_link(__MODULE__, %{defaultState: default})
+      # end
 
       def handle_info({:__live_data_monitor__, child_pid}, {state, name, pids}) do
         Process.monitor(child_pid)
@@ -113,6 +145,7 @@ defmodule LiveData do
 
       def handle_info(:__live_data_init__, {state, name, pids}) do
         _ = LiveData.Server.synchronize(@endpoint, %{}, serialize(state), name)
+
         {:noreply, {state, name, pids}}
       end
 
@@ -126,7 +159,7 @@ defmodule LiveData do
               pids
           end
 
-        if length(pids) == 0 do
+        if pids == [] do
           Logger.debug("Exiting LiveData Process: #{name}")
           Process.exit(self(), :normal)
         end
@@ -147,6 +180,10 @@ defmodule LiveData do
           e ->
             e
         end
+      end
+
+      def handle_call(:__live_data_current_state, _from, {current_state, _} = state) do
+        {:reply, current_state, state}
       end
 
       def handle_call(msg, from, {state, name, pids}) do
@@ -185,13 +222,13 @@ defmodule LiveData do
 
   # TODO
   # not sure really sure how to do this macro stuff, breaking up the server api to be seperate but similar to a gen_server callback?
-  def __on_definition__(env, kind, :handle_mount, args, guards, body) do
-    Module.put_attribute(env.module, :callbacks, {kind, :handle_mount, args, guards, body})
-  end
+  # def __on_definition__(env, kind, :handle_mount, args, guards, body) do
+  #   Module.put_attribute(env.module, :callbacks, {kind, :handle_mount, args, guards, body})
+  # end
 
-  def __on_definition__(env, kind, :handle_action, args, guards, body) do
-    Module.put_attribute(env.module, :callbacks, {kind, :handle_action, args, guards, body})
-  end
+  # def __on_definition__(env, kind, :handle_action, args, guards, body) do
+  #   Module.put_attribute(env.module, :callbacks, {kind, :handle_action, args, guards, body})
+  # end
 
   def __on_definition__(env, kind, :handle_info, args, guards, body) do
     Module.put_attribute(env.module, :callbacks, {kind, :handle_info, args, guards, body})
@@ -224,9 +261,24 @@ defmodule LiveData do
         |> File.write(LiveData.TypespecParser.to_ts(@spec))
       end
 
+      if @state_output_path do
+        name =
+          __MODULE__
+          |> to_string
+          |> String.split(".")
+          |> List.last()
+
+        Path.dirname(unquote(env.file))
+        |> Path.join(@state_output_path)
+        |> Path.join(Path.basename(unquote(env.file), ".ex") <> ".json")
+        |> File.write(Jason.encode!(%{name => @default_state}))
+      end
+
       unquote(handlers)
 
       def __live_data_handle_call__(msg, _from, state) do
+        IO.inspect("umm __live_data_handle_call__")
+
         proc =
           case Process.info(self(), :registered_name) do
             {_, []} -> self()
@@ -267,6 +319,7 @@ defmodule LiveData do
   end
 
   defp wrap_handler(handler) do
+    IO.inspect(handler)
     {k, f, a, _g, b} = handler
 
     quote do

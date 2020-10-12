@@ -23,5 +23,14 @@
   "bugs": {
     "url": "https://github.com/surferseo/live_data/issues"
   },
-  "homepage": "https://github.com/surferseo/live_data#readme"
+  "homepage": "https://github.com/surferseo/live_data#readme",
+  "dependencies": {
+    "fast-json-patch": "^3.0.0-1",
+    "immer": "^7.0.9",
+    "localforage": "^1.9.0",
+    "lodash.clonedeep": "^4.5.0",
+    "lodash.debounce": "^4.0.8",
+    "redux": "^4.0.5",
+    "uuid": "^8.3.0"
+  }
 }

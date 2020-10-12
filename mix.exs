@@ -25,7 +25,9 @@ defmodule LiveData.MixProject do
       {:json_diff, "~> 0.1.2"},
       {:morphix, "~> 0.8.0"},
       {:dialyxir, "~> 1.0.0-rc.7", only: [:dev], runtime: false},
-      {:json_xema, "~> 0.3"}
+      {:json_xema, "~> 0.3"},
+      {:parent, "~> 0.11.0-rc.0"},
+      {:phoenix, "~> 1.5"}
     ]
   end
 end
