@@ -277,8 +277,6 @@ defmodule LiveData do
       unquote(handlers)
 
       def __live_data_handle_call__(msg, _from, state) do
-        IO.inspect("umm __live_data_handle_call__")
-
         proc =
           case Process.info(self(), :registered_name) do
             {_, []} -> self()
@@ -319,7 +317,6 @@ defmodule LiveData do
   end
 
   defp wrap_handler(handler) do
-    IO.inspect(handler)
     {k, f, a, _g, b} = handler
 
     quote do
